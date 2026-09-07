@@ -1,98 +1,80 @@
-# Reinforcement Trading Bot - Professional Edition
+# rl-experiments
 
-Bu proje, Takviyeli Öğrenme (Reinforcement Learning) algoritmalarını kullanarak finansal piyasalarda otomatik işlem yapan modüler ve profesyonel bir sistemdir.
+A personal project for learning reinforcement learning on financial time-series data: PPO and recurrent-PPO
+agents trained in a simulated trading environment, with the emphasis on **how you evaluate an agent** rather
+than on returns.
 
-## 🚀 Proje Hakkında
+I built this to understand the training and evaluation loop end to end — environment design, reward shaping,
+hyperparameter search, and, above all, how easy it is to fool yourself with a good-looking backtest.
 
-Proje, fiyat hareketlerini analiz ederek kârlı alım-satım kararları vermeyi öğrenen bir **PPO (Proximal Policy Optimization)** ajanı üzerine kuruludur.
+## What this is / what this is not
 
-### Temel Özellikler
-- **Modüler Mimari:** SOLID prensiplerine uygun, katmanlı (Data, Core, UI, Utils) yapı.
-- **Dinamik Veri:** Farklı zaman dilimleri (15m, 1h, 1d) ve periyotlarda eğitim ve test desteği.
-- **Transfer Learning:** Bir paritede eğitilmiş modeli başka bir pariteye aktarma (Tecrübe Aktarımı).
-- **Gerçekçi Simülasyon:** 100 USD başlangıç bakiyesi, Mikro Lot (0.01) ve gerçek piyasa maliyetleri.
-- **Merkezi Yönetim:** Tüm bakiye ve strateji ayarları `config/settings.py` üzerinden yönetilir.
+**It is** a research and learning setup: a reproducible pipeline where an idea can be trained, tuned, and then
+tested on data it has never seen.
 
-## 🧠 Model ve Eğitim Detayları
+**It is not** a production system and not financial advice. Nothing here is deployed against a live account,
+and the results are not presented as a strategy that works.
 
-Bu bot, piyasa verilerini analiz ederek en uygun aksiyonu seçmek için derin pekiştirmeli öğrenme kullanır.
+## Approach
 
-### RL Algoritması
-- **Algoritma:** PPO (Proximal Policy Optimization) - [Stable Baselines3](https://stable-baselines3.readthedocs.io/) kütüphanesi kullanılmaktadır.
-- **Alternatif:** RecurrentPPO (LSTM) - `sb3-contrib` ile hafıza tabanlı politika ağı desteği.
-- **Ağ Yapısı:** Multi-Layer Perceptron (MLP) ile ikişer adet 256 nöronluk gizli katman (Policy ve Value ağları için).
-- **Normalizasyon:** Eğitim stabilitesi için `VecNormalize` (Observation & Reward normalization) kullanılmaktadır.
+**Algorithms** — PPO and RecurrentPPO (LSTM policy) via [Stable-Baselines3](https://stable-baselines3.readthedocs.io/)
+and sb3-contrib. MLP policy with two 256-unit hidden layers; observations normalised with `VecNormalize`.
 
-### Ödül (Reward) Fonksiyonu
-Sistem, sadece kâr/zarara odaklanmak yerine şu faktörleri içeren gelişmiş bir ödül mekanizması kullanır:
-- **Gerçekleşen PnL (Pips):** İşlem kapandığında kâr/zarar baz alınır.
-- **Maliyetler:** Spread, komisyon ve kayma (slippage) maliyetleri ödülden düşülür.
-- **Sharpe Ratio Bonusu:** Risk-ayarlı performansı teşvik eden rolling Sharpe hesaplaması. *(YENİ)*
-- **Ödül Şekillendirme (Reward Shaping):**
-    - **Overtrading Cezası:** Gereksiz işlem açılmasını önlemek için her işlem açılışında sabit pip cezası.
-    - **Holding Bonusu:** Kârlı pozisyonda kalınan her bar için küçük bir teşvik primi.
-    - **Zaman Maliyeti (Time Penalty):** Pozisyonda beklenen her bar için küçük bir ceza (stagnasyonu önlemek için).
-    - **Trend Uyumu:** 20 ve 50 periyotluk hareketli ortalamaların (MA) yönüne göre trend ile uyumlu işlemlere bonus, ters işlemlere ceza.
-    - **ATR Tabanlı SL/TP:** Volatiliteye duyarlı dinamik stop-loss ve take-profit seviyeleri.
-    - **Asimetrik Kayıp Ağırlığı:** Zararlı işlemler, kârlı işlemlere göre daha yüksek çarpanla (2.5x) cezalandırılarak modelin daha temkinli olması sağlanır.
+**Environment** — a simulated account with a small starting balance and micro lots, so that transaction costs
+matter relative to position size. Spread, commission and slippage are charged on every trade rather than
+assumed away.
 
-### Gözlem (State) Uzayı
-Model, her adımda şu verileri içeren geçmişe dönük bir pencere (Sliding Window size: 30) görür:
-- **Teknik Göstergeler:** RSI, ATR, MA Eğimleri, MA Farkı (Spread), MACD, Bollinger Bant Genişliği.
-- **İçsel Durum (Agent State):** Mevcut pozisyon (-1: Short, 0: Flat, 1: Long), işlemde geçen süre, gerçekleşmemiş kâr/zarar (scaled unrealized PnL).
+**Timeframes** — 15m, 1h and 1d, with transfer learning between timeframes and instruments so a policy trained
+on one series can be used as a starting point for another.
 
-### Aksiyon Uzayı
-Bot, ayrık (discrete) bir aksiyon uzayına sahiptir:
-- **0: HOLD** - Hiçbir şey yapma veya pozisyonu koru.
-- **1: CLOSE** - Mevcut açık pozisyonu kapat.
-- **2..N: OPEN** - Yeni bir pozisyon aç (Yön: Long/Short, parametreler: SL ve TP opsiyonları).
+**Reward** — realised P&L in pips, minus transaction costs, plus a rolling Sharpe term; penalties for
+overtrading and for holding too long, an incentive for trading with the prevailing moving-average trend, and
+ATR-based dynamic stop-loss / take-profit. Losses are weighted more heavily than equivalent gains, so the agent
+is not rewarded for taking large tail risk to smooth its average.
 
-## 📁 Dosya Yapısı
+## Evaluation
 
-- **`scripts/`**: Ana giriş noktaları:
-  - `train_agent.py` - Standart PPO eğitimi
-  - `train_recurrent.py` - RecurrentPPO (LSTM) eğitimi *(YENİ)*
-  - `test_agent.py` - Model testi
-  - `optimize_hyperparams.py` - Optuna ile hiperparametre optimizasyonu *(YENİ)*
-  - `walk_forward.py` - Walk-forward validation *(YENİ)*
-- **`src/`**: Çekirdek iş mantığı ve modüller.
-  - `data/`: Veri indirme ve işleme (Loader & Processor).
-  - `core/`: RL Ortamı (Environment).
-  - `ui/`: Arayüz bileşenleri ve görselleştirme.
-  - `utils/`: Raporlama ve yardımcı araçlar.
-- **`models/`**: Eğitilmiş bot modelleri (`.zip`).
-- **`outputs/`**: Backtest sonuçları (Grafikler ve CSV raporları).
-- **`config/`**: Merkezi yapılandırma ayarları.
+This is the part the project exists for.
 
-## 🛠️ Gelişmiş Özellikler
+- **Walk-forward validation** — the agent is trained on one window and evaluated on the next, repeatedly, so a
+  result only counts if it survives data the model has never seen.
+- **Hyperparameter search** with [Optuna](https://optuna.org/), rather than hand-tuning until a number looks good.
+- **Backtest reporting** — equity curves and per-run charts written to `outputs/`, so failure cases can be read
+  rather than summarised into a single metric.
+- **Failure analysis** — the interesting runs are the ones that lose money in a specific, explainable way.
 
-### Optuna Hiperparametre Optimizasyonu
-En iyi model parametrelerini otomatik bulma:
-```bash
-python scripts/optimize_hyperparams.py --trials 20 --symbol EURUSD=X
+## Structure
+
+```
+config/     configuration and run settings
+src/
+  data/     loading and preprocessing of price series
+  core/     the RL environment
+  ui/       dashboard and visualisation
+  utils/    reporting helpers
+scripts/    entry points: train_agent, train_recurrent, test_agent,
+            optimize_hyperparams, walk_forward
+tests/      unit tests
+outputs/    backtest results and charts
 ```
 
-### RecurrentPPO (LSTM) Eğitimi
-Hafıza tabanlı model eğitimi:
+## Running it
+
+Requires Python 3 and the packages in `Requirements.txt`.
+
 ```bash
-python scripts/train_recurrent.py --symbol EURUSD=X --steps 300000
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r Requirements.txt
+
+python scripts/train_agent.py          # train a PPO agent
+python scripts/optimize_hyperparams.py # Optuna search
+python scripts/walk_forward.py         # walk-forward validation
+python scripts/test_agent.py           # evaluate a saved agent
 ```
 
-### Walk-Forward Validation
-Daha gerçekci model değerlendirmesi:
-```bash
-python scripts/walk_forward.py --symbol EURUSD=X --windows 4
-```
+## Notes
 
-## ⚙️ Hızlı Kurulum ve Başlatma
+Built as a learning project; I used AI coding assistance while working on it. The goal was to understand
+reinforcement learning and, in particular, honest evaluation methodology — not to ship a trading product.
 
-Bu projede karmaşık terminal komutlarıyla uğraşmanıza gerek yoktur. Her şeyi otomatik hale getirdik:
-
-1.  Proje klasöründeki **`TradingBot_Baslat.command`** dosyasına çift tıklayın.
-2.  **İlk çalıştırmada:** Program gerekli sanal ortamı (`venv`) otomatik kuracak ve kütüphaneleri yükleyecektir (bu işlem birkaç dakika sürebilir).
-3.  **Sonraki çalıştırmalarda:** Saniyeler içinde Dashboard açılacaktır.
-
-Bu işlem sonrası açılan kontrol paneli üzerinden sembol seçebilir, eğitimi başlatabilir veya backtest sonuçlarını anlık olarak izleyebilirsiniz.
-
----
-*Bu proje eğitim amaçlıdır. Finansal tavsiye niteliği taşımaz.*
+MIT-style personal project. Use at your own risk.
